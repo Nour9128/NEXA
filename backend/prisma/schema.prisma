@@ -1,0 +1,388 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SpaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum PlanCategory {
+  STUDY
+  TRAVEL
+  WORK
+  PERSONAL
+  EVENT
+  FINANCE
+  HEALTH
+  OTHER
+}
+
+enum SavedItemType {
+  NOTE
+  LINK
+  SCREENSHOT
+  VOICE
+  AI_RESULT
+}
+
+enum NotificationType {
+  DEADLINE
+  INVITATION
+  ASSIGNMENT
+  COMMENT
+  SYSTEM
+}
+
+model User {
+  id                   String               @id @default(uuid())
+  email                String               @unique
+  passwordHash         String
+  fullName             String
+  avatarUrl            String?
+  timezone             String               @default("UTC")
+  bio                  String?
+  emailVerified        Boolean              @default(false)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  sessions             Session[]
+  verificationTokens   VerificationToken[]
+  passwordResetTokens  PasswordResetToken[]
+  plans                Plan[]
+  tasks                Task[]               @relation("UserTasks")
+  assignedTasks        Task[]               @relation("AssignedTasks")
+  sharedSpaceMembers   SharedSpaceMember[]
+  createdSpaces        SharedSpace[]        @relation("CreatedSpaces")
+  invitationsCreated   Invitation[]         @relation("InvitationsCreated")
+  savedItems           SavedItem[]
+  comments             Comment[]
+  notifications        Notification[]
+  aiConversations      AIConversation[]
+  aiUsageRecords       AIUsageRecord[]
+  expenses             Expense[]            @relation("UserExpenses")
+
+  @@index([email])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshToken String   @unique
+  userAgent    String?
+  ipAddress    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([refreshToken])
+}
+
+model VerificationToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([token])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([token])
+}
+
+model Plan {
+  id          String        @id @default(uuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  spaceId     String?
+  space       SharedSpace?  @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+  title       String
+  description String?
+  category    PlanCategory  @default(PERSONAL)
+  targetDate  DateTime?
+  isCompleted Boolean       @default(false)
+  isPublic    Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  tasks       Task[]
+  budget      Budget?
+  attachments Attachment[]
+  comments    Comment[]
+
+  @@index([userId])
+  @@index([spaceId])
+  @@index([category])
+  @@index([targetDate])
+}
+
+model Task {
+  id           String       @id @default(uuid())
+  userId       String
+  user         User         @relation("UserTasks", fields: [userId], references: [id], onDelete: Cascade)
+  planId       String?
+  plan         Plan?        @relation(fields: [planId], references: [id], onDelete: Cascade)
+  spaceId      String?
+  space        SharedSpace? @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+  assignedToId String?
+  assignedTo   User?        @relation("AssignedTasks", fields: [assignedToId], references: [id], onDelete: SetNull)
+  
+  title        String
+  description  String?
+  status       TaskStatus   @default(TODO)
+  priority     Priority     @default(MEDIUM)
+  dueDate      DateTime?
+  reminderDate DateTime?
+  isRecurring  Boolean      @default(false)
+  recurrenceRule String?
+  tags         String[]     @default([])
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  subtasks     Subtask[]
+  attachments  Attachment[]
+  comments     Comment[]
+
+  @@index([userId])
+  @@index([planId])
+  @@index([spaceId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([assignedToId])
+}
+
+model Subtask {
+  id          String   @id @default(uuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  title       String
+  isCompleted Boolean  @default(false)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([taskId])
+}
+
+model SharedSpace {
+  id          String              @id @default(uuid())
+  name        String
+  description String?
+  createdById String
+  createdBy   User                @relation("CreatedSpaces", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  members     SharedSpaceMember[]
+  plans       Plan[]
+  tasks       Task[]
+  invitations Invitation[]
+  budget      Budget?
+
+  @@index([createdById])
+}
+
+model SharedSpaceMember {
+  id        String      @id @default(uuid())
+  spaceId   String
+  space     SharedSpace @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      SpaceRole   @default(MEMBER)
+  joinedAt  DateTime    @default(now())
+
+  @@unique([spaceId, userId])
+  @@index([spaceId])
+  @@index([userId])
+}
+
+model Invitation {
+  id          String      @id @default(uuid())
+  spaceId     String
+  space       SharedSpace @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  token       String      @unique
+  role        SpaceRole   @default(MEMBER)
+  createdById String
+  createdBy   User        @relation("InvitationsCreated", fields: [createdById], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  maxUses     Int         @default(1)
+  useCount    Int         @default(0)
+  createdAt   DateTime    @default(now())
+
+  @@index([token])
+  @@index([spaceId])
+}
+
+model SavedItem {
+  id          String        @id @default(uuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  content     String?
+  type        SavedItemType @default(NOTE)
+  sourceUrl   String?
+  mediaUrl    String?
+  tags        String[]      @default([])
+  aiSummary   String?
+  isFavorite  Boolean       @default(false)
+  isArchived  Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([type])
+  @@index([isFavorite])
+  @@index([isArchived])
+}
+
+model Attachment {
+  id        String   @id @default(uuid())
+  planId    String?
+  plan      Plan?    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  taskId    String?
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  fileName  String
+  fileUrl   String
+  fileType  String
+  fileSize  Int
+  createdAt DateTime @default(now())
+
+  @@index([planId])
+  @@index([taskId])
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId    String?
+  plan      Plan?    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  taskId    String?
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([planId])
+  @@index([taskId])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String
+  link      String?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+model Budget {
+  id          String       @id @default(uuid())
+  planId      String?      @unique
+  plan        Plan?        @relation(fields: [planId], references: [id], onDelete: Cascade)
+  spaceId     String?      @unique
+  space       SharedSpace? @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  totalLimit  Decimal      @default(0.0)
+  currency    String       @default("USD")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  expenses    Expense[]
+}
+
+model Expense {
+  id          String   @id @default(uuid())
+  budgetId    String
+  budget      Budget   @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  paidById    String
+  paidBy      User     @relation("UserExpenses", fields: [paidById], references: [id], onDelete: Cascade)
+  title       String
+  amount      Decimal
+  category    String   @default("General")
+  date        DateTime @default(now())
+  receiptUrl  String?
+  createdAt   DateTime @default(now())
+
+  @@index([budgetId])
+  @@index([paidById])
+}
+
+model AIConversation {
+  id        String      @id @default(uuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String      @default("New Conversation")
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  messages  AIMessage[]
+
+  @@index([userId])
+}
+
+model AIMessage {
+  id             String         @id @default(uuid())
+  conversationId String
+  conversation   AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String         // "user" | "assistant" | "system"
+  content        String
+  structuredData Json?          // Structured actions, tasks, plan drafts
+  tokenCount     Int?
+  createdAt      DateTime       @default(now())
+
+  @@index([conversationId])
+}
+
+model AIUsageRecord {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  model        String
+  promptTokens Int
+  compTokens   Int
+  totalTokens  Int
+  action       String   // "chat" | "organize" | "extract"
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
